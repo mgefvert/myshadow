@@ -7,7 +7,7 @@ apply transformations to the local data (if you're changing the schema for local
 
 ## Usage
 
-Format: myshadow [-v] <definition-file> [<commands>...]
+Format: myshadow [-v] definition-file [commands...]
 
 Available commands:
    
