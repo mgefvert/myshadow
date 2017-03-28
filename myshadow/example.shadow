@@ -1,0 +1,25 @@
+﻿# Remote server definition
+remote-server   = --login-path=root.remote
+remote-database = customers
+
+# Local server definition
+local-server    = --login-path=root.local
+local-database  = customers
+local-collation = utf8mb4_general_ci
+
+# Data file
+data-file       = customers.sql
+
+# Transform file can be used to automatically apply transformations to the local database
+transform-file  = customers-transform.sql
+
+# Extra parameters - anything that starts with a dash will simply be appended to the mysqldump command line
+--ignore-table customers.log
+--ignore-table customers.reports
+
+# Separate table dump definitions, starts with "table = " and then uses extra parameters
+table = log
+--where "time >= date_sub(curdate(), interval 1 month)"
+
+table = reports
+--where "created >= date_sub(curdate(), interval 1 month)"

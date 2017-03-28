@@ -1,0 +1,14 @@
+﻿# Remote server definition
+remote-server   = --login-path=root.local
+remote-database = data
+
+# Local server definition
+local-server    = --login-path=root.local
+local-database  = data_copy
+local-collation = utf8mb4_general_ci
+
+# Data file
+data-file       = testdata.sql
+
+# Transform file can be used to automatically apply transformations to the local database
+transform-file  = ..\..\test-transform.sql
