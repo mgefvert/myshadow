@@ -1,9 +1,17 @@
 # myshadow
 
-Developer tool to copy production databases to local developer databases. (It make a local "shadow" of the production data.) 
+Developer tool to copy production databases to local developer databases. (It makes a local "shadow" of the production data.) 
 
 Depends on mysql command line tools to run mysqldump / mysql with appropriate parameters to make local copies and optionally
 apply transformations to the local data (if you're changing the schema for local development, for instance).
+
+## Overview
+
+Basically, it runs the mysqldump and mysql command-line tools to download a remote database, store it in a local file,
+recreate the local database at will and optionally apply transformations. By crafting the shadow definition file in various ways
+you can exclude large tables, manipulate the data and so on to make your daily development life easier. Most of what
+it does is just craft a special command line and let mysql do the grunt work - but it takes some redundant work out of
+your life :)
 
 ## Usage
 
