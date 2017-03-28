@@ -26,7 +26,8 @@ Available options:
 
 ## Example shadow file
 
-```# Remote server definition
+```
+# Remote server definition
 remote-server   = --login-path=root.remote
 remote-database = customers
 
@@ -50,7 +51,8 @@ table = log
 --where "time >= date_sub(curdate(), interval 1 month)"
 
 table = reports
---where "created >= date_sub(curdate(), interval 1 month)"```
+--where "created >= date_sub(curdate(), interval 1 month)"
+```
 
 ## Complaints
 
