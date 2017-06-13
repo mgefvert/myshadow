@@ -16,93 +16,95 @@ namespace myshadow
         Transform
     }
 
+    [Flags]
+    public enum ShadowOptions
+    {
+        None = 0,
+        Verbose = 1,
+        RemoteAutoIncrement = 2,
+        GZip = 4
+    }
+
     public class Shadower
     {
         private readonly ShadowDefinition _def;
+        private readonly bool _gzip;
         private readonly bool _removeAuto;
         private readonly string _verbose;
+        private readonly List<string> _tables;
 
-        public Shadower(ShadowDefinition def, bool verbose, bool removeAutoIncrement)
+        public Shadower(ShadowDefinition def, ShadowOptions options, List<string> tables)
         {
             _def = def;
-            _removeAuto = removeAutoIncrement;
-            _verbose = verbose ? "-v" : null;
+            _gzip = options.HasFlag(ShadowOptions.GZip);
+            _removeAuto = options.HasFlag(ShadowOptions.RemoteAutoIncrement);
+            _verbose = options.HasFlag(ShadowOptions.Verbose) ? "-v" : null;
+            _tables = tables.ToList();
         }
 
-        public ShadowCommand TextToCommand(string command)
+        private static string AddToFileName(string filename, string postfix)
         {
-            if (string.IsNullOrEmpty(command))
-                throw new ArgumentNullException(nameof(command));
-
-            ShadowCommand result;
-            if (!Enum.TryParse(command.Replace("-", "").Trim(), true, out result))
-                throw new Exception("Invalid command: " + command);
-
-            return result;
+            return Path.ChangeExtension(filename, null) + postfix + Path.GetExtension(filename);
         }
 
-        public void Run(ShadowCommand cmd)
-        {
-            switch (cmd)
-            {
-                case ShadowCommand.Dump:
-                    Dump();
-                    break;
-                case ShadowCommand.LocalSchema:
-                    LocalSchema();
-                    break;
-                case ShadowCommand.Reload:
-                    Reload();
-                    break;
-                case ShadowCommand.RemoteSchema:
-                    RemoteSchema();
-                    break;
-                case ShadowCommand.Transform:
-                    Transform();
-                    break;
-            }
-        }
-
-        public void Dump()
+        public void DoDump()
         {
             Msg("Dumping remote server data");
+            var datafile = _def.DataFile + (_gzip ? ".gz" : "");
+
+            // tablelist = searchable list of all tables specified on the command line
+            var tablelist = new HashSet<string>(_tables, StringComparer.CurrentCultureIgnoreCase);
+
+            // firstlist = which specified tables to process in the "global" section
+            var firstlist = new HashSet<string>(_tables, StringComparer.CurrentCultureIgnoreCase);
+            foreach (var t in _def.ExtraParams.Keys)
+                firstlist.Remove(t);
 
             foreach (var item in _def.ExtraParams.OrderBy(x => x.Key))
             {
                 var extra = string.Join(" ", item.Value);
-                var pipe = string.IsNullOrEmpty(item.Key) ? "> " + _def.DataFile : ">> " + _def.DataFile;
 
-                ShellCmd($"mysqldump.exe {_def.RemoteServer} -R -E -C --single_transaction {_verbose} {extra} {_def.RemoteDatabase} {item.Key} {pipe}");
+                // If we did specify tables and the current table is not part of that list, skip
+                if (_tables.Any() && !tablelist.Contains(item.Key))
+                    continue;
+
+                ShellCmd($"mysqldump.exe {_def.RemoteServer} -R -E -C --single_transaction {_verbose} {extra} {_def.RemoteDatabase}",
+                    (string.IsNullOrEmpty(item.Key) ? string.Join(" ", firstlist) : item.Key),
+                    _gzip ? "| gzip" : "",
+                    (string.IsNullOrEmpty(item.Key) ? "> " : ">> ") + datafile);
             }
         }
 
-        public void DumpTable(string table, List<string> extraParams)
-        {
-            if (!string.IsNullOrEmpty(table))
-                Msg("Dumping additional table " + table);
-
-            ShellCmd($"mysqldump.exe {_def.RemoteServer} -R -E -C --single_transaction {_verbose} -r{_def.DataFile} {_def.RemoteDatabase}");
-        }
-
-        public void LocalSchema()
-        {
-            Msg("Dumping local schema");
-            ShellCmd($"mysqldump.exe {_def.LocalServer} -R -E -C --comments --no-data {_verbose} {_def.RemoteDatabase}", 
-                _removeAuto ? "| sed \"s/ AUTO_INCREMENT=[0-9]*//g\"" : "",
-                $"> {AddToFileName(_def.DataFile, "_local")}");
-        }
-
-        public void Reload()
+        public void DoReload()
         {
             Msg($"Recreating local {_def.LocalDatabase} database");
             ShellCmd($"mysql.exe {_def.LocalServer} --default-character-set=utf8mb4",
                 $"-e \"drop database if exists {_def.LocalDatabase}; create database {_def.LocalDatabase} collate '{_def.LocalCollation}';\"");
 
             Msg($"Loading database {_def.LocalDatabase} with data");
-            ShellCmd($"mysql.exe {_def.LocalServer} --default-character-set=utf8mb4 {_def.LocalDatabase} < {_def.DataFile}");
+
+            var datafile = _def.DataFile + (_gzip ? ".gz" : "");
+            ShellCmd(_gzip ? $"gzip -d -c {datafile}" : $"type {datafile}",
+                $"| mysql.exe {_def.LocalServer} --default-character-set=utf8mb4 {_def.LocalDatabase}");
         }
 
-        public void Transform()
+        public void DoSchemaLocal()
+        {
+            Msg("Dumping local schema");
+            ShellCmd($"mysqldump.exe {_def.LocalServer} -R -E -C --comments --no-data {_verbose} {_def.LocalDatabase}", 
+                _removeAuto ? "| sed \"s/ AUTO_INCREMENT=[0-9]*//g\"" : "",
+                $"> {AddToFileName(_def.DataFile, "_local")}");
+        }
+
+        public void DoSchemaRemote()
+        {
+            Msg("Dumping remote schema");
+            ShellCmd($"mysqldump.exe {_def.RemoteServer} -R -E --comments --no-data {_verbose} {_def.RemoteDatabase}", 
+                _removeAuto ? "| sed \"s/ AUTO_INCREMENT=[0-9]*//g\"" : "",
+                $" > {AddToFileName(_def.DataFile, "_remote")}");
+        }
+
+        public void DoTransform()
         {
             if (string.IsNullOrEmpty(_def.TransformFile))
             {
@@ -122,6 +124,28 @@ namespace myshadow
             ShellCmd($"mysql.exe {_def.LocalServer} --default-character-set=utf8mb4 {_verbose} {_def.LocalDatabase} < {_def.TransformFile}");
         }
 
+        public void Run(ShadowCommand cmd)
+        {
+            switch (cmd)
+            {
+                case ShadowCommand.Dump:
+                    DoDump();
+                    break;
+                case ShadowCommand.LocalSchema:
+                    DoSchemaLocal();
+                    break;
+                case ShadowCommand.Reload:
+                    DoReload();
+                    break;
+                case ShadowCommand.RemoteSchema:
+                    DoSchemaRemote();
+                    break;
+                case ShadowCommand.Transform:
+                    DoTransform();
+                    break;
+            }
+        }
+
         private void Msg(string message)
         {
             using (new SetConsoleColor(ConsoleColor.Green))
@@ -129,14 +153,6 @@ namespace myshadow
                 Console.Error.WriteLine("");
                 Console.Error.WriteLine(message);
             }
-        }
-
-        public void RemoteSchema()
-        {
-            Msg("Dumping remote schema");
-            ShellCmd($"mysqldump.exe {_def.RemoteServer} -R -E --comments --no-data {_verbose} {_def.RemoteDatabase}", 
-                _removeAuto ? "| sed \"s/ AUTO_INCREMENT=[0-9]*//g\"" : "",
-                $" > {AddToFileName(_def.DataFile, "_remote")}");
         }
 
         private void ShellCmd(params string[] arguments)
@@ -157,9 +173,16 @@ namespace myshadow
                 throw new Exception("Subprocess returned exit code " + process.ExitCode);
         }
 
-        private static string AddToFileName(string filename, string postfix)
+        public static ShadowCommand TextToCommand(string command)
         {
-            return Path.ChangeExtension(filename, null) + postfix + Path.GetExtension(filename);
+            if (string.IsNullOrEmpty(command))
+                throw new ArgumentNullException(nameof(command));
+
+            ShadowCommand result;
+            if (!Enum.TryParse(command.Replace("-", "").Trim(), true, out result))
+                throw new Exception("Invalid command: " + command);
+
+            return result;
         }
     }
 }

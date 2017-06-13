@@ -31,8 +31,8 @@ namespace myshadow
                 definition.Load(filename);
                 definition.Validate();
 
-                var shadower = new Shadower(definition, options.Verbose, options.RemoveAuto);
-                var commands = options.Commands.Select(shadower.TextToCommand).ToList();
+                var shadower = new Shadower(definition, options.ShadowOptions, options.Tables);
+                var commands = options.Commands.Select(Shadower.TextToCommand).ToList();
                 if (!commands.Any())
                 {
                     commands.Add(ShadowCommand.Dump);
