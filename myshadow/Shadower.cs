@@ -79,7 +79,7 @@ namespace myshadow
         {
             Msg($"Recreating local {_def.LocalDatabase} database");
             ShellCmd($"mysql.exe {_def.LocalServer} --default-character-set=utf8mb4",
-                $"-e \"drop database if exists {_def.LocalDatabase}; create database {_def.LocalDatabase} collate '{_def.LocalCollation}';\"");
+                $"-e \"drop database if exists `{_def.LocalDatabase}`; create database `{_def.LocalDatabase}` collate '{_def.LocalCollation}';\"");
 
             Msg($"Loading database {_def.LocalDatabase} with data");
 
