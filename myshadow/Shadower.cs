@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using DotNetCommons;
+using DotNetCommons.Sys;
 
 namespace myshadow
 {
@@ -21,14 +21,12 @@ namespace myshadow
     {
         None = 0,
         Verbose = 1,
-        RemoteAutoIncrement = 2,
-        GZip = 4
+        RemoteAutoIncrement = 2
     }
 
     public class Shadower
     {
         private readonly ShadowDefinition _def;
-        private readonly bool _gzip;
         private readonly bool _removeAuto;
         private readonly string _verbose;
         private readonly List<string> _tables;
@@ -36,7 +34,6 @@ namespace myshadow
         public Shadower(ShadowDefinition def, ShadowOptions options, List<string> tables)
         {
             _def = def;
-            _gzip = options.HasFlag(ShadowOptions.GZip);
             _removeAuto = options.HasFlag(ShadowOptions.RemoteAutoIncrement);
             _verbose = options.HasFlag(ShadowOptions.Verbose) ? "-v" : null;
             _tables = tables.ToList();
@@ -50,7 +47,7 @@ namespace myshadow
         public void DoDump()
         {
             Msg("Dumping remote server data");
-            var datafile = _def.DataFile + (_gzip ? ".gz" : "");
+            var datafile = _def.DataFile + ".gz";
 
             // tablelist = searchable list of all tables specified on the command line
             var tablelist = new HashSet<string>(_tables, StringComparer.CurrentCultureIgnoreCase);
@@ -70,7 +67,7 @@ namespace myshadow
 
                 ShellCmd($"mysqldump.exe {_def.RemoteServer} -R -E -C --single_transaction {_verbose} {extra} {_def.RemoteDatabase}",
                     (string.IsNullOrEmpty(item.Key) ? string.Join(" ", firstlist) : item.Key),
-                    _gzip ? "| gzip" : "",
+                    "| gzip",
                     (string.IsNullOrEmpty(item.Key) ? "> " : ">> ") + datafile);
             }
         }
@@ -83,8 +80,9 @@ namespace myshadow
 
             Msg($"Loading database {_def.LocalDatabase} with data");
 
-            var datafile = _def.DataFile + (_gzip ? ".gz" : "");
-            ShellCmd(_gzip ? $"gzip -d -c {datafile}" : $"type {datafile}",
+            var datafile = _def.DataFile + ".gz";
+            ShellCmd($"gzip -d -c {datafile}",
+                "| sed 's/NO_AUTO_CREATE_USER//'",
                 $"| mysql.exe {_def.LocalServer} --default-character-set=utf8mb4 {_def.LocalDatabase}");
         }
 
